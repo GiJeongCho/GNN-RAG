@@ -16,3 +16,4 @@ yarn.lock
 /src/test/tempfs/
 /src/test/extracted_texts/
 /src/test/embedding/
+/local_data/
