@@ -19,3 +19,8 @@ yarn.lock
 
 /local_data/
 /src/test/local_data
+
+src/test/embedding_bge_m3
+src/test/embedding_Qwen4b
+
+volumes/

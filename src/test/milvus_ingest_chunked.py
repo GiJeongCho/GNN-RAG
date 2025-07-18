@@ -20,7 +20,7 @@ MILVUS_PORT    = "19530"
 COLLECTION_NAME= "pdf_chunks"
 EMBEDDING_DIR  = Path(__file__).parent / "extracted_texts"
 META_JSON_PATH = EMBEDDING_DIR / "_extraction_meta.json"
-MODEL_DIR      = "/home/조기정/project/RAG_LLM/src/test/embedding"
+MODEL_DIR      = Path(__file__).parent / "embedding_Qwen4b"
 MAX_TOKENS     = 512  # 토큰 최대치
 OVERLAP        = 64   # 청크 간 중복 토큰 수
 # ──────────────────────────
