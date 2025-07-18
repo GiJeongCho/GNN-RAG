@@ -23,4 +23,4 @@ yarn.lock
 src/test/embedding_bge_m3
 src/test/embedding_Qwen4b
 
-/volumes/milvus
+/volumes/
