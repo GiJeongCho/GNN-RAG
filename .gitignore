@@ -17,3 +17,4 @@ yarn.lock
 /src/test/extracted_texts/
 /src/test/embedding/
 /local_data/
+/RAG_LLM/src/test/local_data
