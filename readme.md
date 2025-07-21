@@ -50,6 +50,55 @@ Milvus 벡터 DB는 ingest_* 단계에서 .txt 를 읽어 임베딩 후 저장 (
 
 단일 pdf 인젝션 시, 텍스트 파일로 남기지 않고 바로 백터 DB로 저장.
 **@ 나중에 텍스트 파일로 남기는 부분은 다 삭제하기.(pdf 파일 텍스트 추출 성능 검증용임)
+** 단일 파일 올릴 경우에는 날짜까지 고려해서 최신만 남게 중복이 제거되는데 다중 파일 올릴때는 같은이름 날짜가 다른것은 제거가 되지 않음. [아예 같은 이름일 경우만 됨]
+
+
+### 기본 구성 ###
+"""
+리눅스 docker 설치 
+sudo wget -qO- http://get.docker.com/
+sudo apt-get update
+sudo apt-get install docker.io
+sudo ln -sf /usr/bin/docker.io /usr/local/bin/docker
+"""
+
+"""
+docker에 milvus 설치 
+
+Download the installation script
+curl -sfL https://raw.githubusercontent.com/milvus-io/milvus/master/scripts/standalone_embed.sh -o standalone_embed.sh
+
+Start the Docker container
+bash standalone_embed.sh start
+
+
+
+ => http://127.0.0.1:9091/
+"""
+
+
+"""
+FAISS 백터 DB 구축
+!pip install faiss-cpu
+! pip install sentence_transformers
+! pip install --upgrade --force-reinstall sentence-transformers
+! pip install pandas
+! pip install pyarrow
+! pip install dill
+! pip install aiohttp
+! pip install numpy
+! pip install accelerate
+"""
+
+"""
+milvus 백터 DB 구축
+python3 -m pip install pymilvus==2.6.0b0
+pip install "pymilvus[model]"
+
+python /home/조기정/project/RAG_LLM/src/test/milvus_ingest_chunked.py
+"""
+### 기본 구성 ###
+
 
 ####### test 경로 #######
 

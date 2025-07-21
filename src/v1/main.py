@@ -94,7 +94,7 @@ async def extract_pdfs(req: PDFExtractRequest):
             continue
         try:
             doc = fitz.open(pdf_path)
-            text_pages = [p.get_text("text").strip() for p in doc]
+            text_pages = [p.get_text("text", sort=True).strip() for p in doc]
             pdf_text = "\n\n".join(text_pages)
             txt_path.parent.mkdir(parents=True, exist_ok=True)
             txt_path.write_text(pdf_text, encoding="utf-8")
@@ -289,7 +289,7 @@ async def ingest_single_pdf(req: SinglePDFIngestRequest):
 
             # 읽기
             doc = fitz.open(pdf_abs)
-            pages = [p.get_text("text").strip() for p in doc]
+            pages = [p.get_text("text", sort=True).strip() for p in doc]
             text_all = "\n\n".join(pages)
 
             # 경로 기준 상대키
