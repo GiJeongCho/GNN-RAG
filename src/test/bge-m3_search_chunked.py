@@ -46,7 +46,7 @@ def chunk_text(text: str, max_tokens: int = MAX_TOKENS, overlap: int = 0) -> lis
     return chunks
 
 # 검색 함수
-def search(query: str, top_k: int, max_level: int):
+def search(query: str, top_k: int, user_level: int):
     # 1) 메타 로드
     extraction_meta = json.loads(META_JSON_PATH.read_text(encoding='utf-8'))
 
@@ -76,7 +76,7 @@ def search(query: str, top_k: int, max_level: int):
     q_vec = F.normalize(q_emb, p=2, dim=1).cpu().numpy().astype('float32')
 
     # 5) 필터 표현식 지정
-    expr = f"security_level <= {max_level}"
+    expr = f"security_level <= {user_level}"
 
     # 6) Milvus 검색
     results = collection.search(
@@ -88,8 +88,9 @@ def search(query: str, top_k: int, max_level: int):
         output_fields=['path','chunk_idx','security_level']
     )
 
-    # 7) 결과 출력
+    # 7) 결과 리스트로 반환
     hits = results[0]
+    hit_list = []
     for hit in hits:
         eid = hit.id
         score = hit.score
@@ -103,13 +104,34 @@ def search(query: str, top_k: int, max_level: int):
         chunks = chunk_text(full_text)
         snippet = chunks[cidx] if cidx < len(chunks) else ''
 
-        print(f"ID {eid} | score={score:.4f} | path={rel_txt} | chunk={cidx} | level={sec_level}")
-        print(f"snippet:\n{snippet}\n{'─'*60}")
+        hit_list.append({
+            "score": score,
+            "path": rel_txt,
+            "chunk_idx": cidx,
+            "security_level": sec_level,
+            "snippet": snippet
+        })
+    return hit_list
+
+# LLM 프롬프트 생성 함수
+
+def build_prompt(query: str, hits: list[dict]) -> str:
+    context = "\n---\n".join([h['snippet'] for h in hits])
+    return f"사용자 질의: {query}\n\n관련 문서 스니펫:\n{context}\n\n위 내용을 참고하여 응답해 주세요."
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('query', help='검색할 문장')
     parser.add_argument('--top_k', type=int, default=5, help='상위 k개 결과')
-    parser.add_argument('--max_level', type=int, required=True, help='접근 가능한 최대 보안 레벨')
+    parser.add_argument('--user_level', type=int, required=True, help='접근 가능한 최대 보안 레벨')
     args = parser.parse_args()
-    search(args.query, args.top_k, args.max_level)
+    hits = search(args.query, args.top_k, args.user_level)
+    if not hits:
+        print("검색 결과가 없습니다.")
+        exit(0)
+    print("▶ 검색 스니펫:")
+    for i, h in enumerate(hits, 1):
+        print(f"{i}. (score={h['score']:.4f}) {h['path']} [chunk={h['chunk_idx']}] (level={h['security_level']})")
+        print(h['snippet'], "\n")
+    prompt = build_prompt(args.query, hits)
+    print("▶ LLM 프롬프트:\n", prompt)

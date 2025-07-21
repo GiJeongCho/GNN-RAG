@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from v1.router import router_v1
 
 app = FastAPI(
-    docs_url="/v1/RGA_LLM/docs",
-    redoc_url="/v1/RGA_LLM/redoc",
-    openapi_url="/v1/RGA_LLM/openapi.json"
+    docs_url="/v1/RGA_/docs",
+    redoc_url="/v1/RGA_/redoc",
+    openapi_url="/v1/RGA_/openapi.json"
 )
 
 # 라우터를 등록합니다.

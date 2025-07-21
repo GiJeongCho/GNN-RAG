@@ -24,19 +24,14 @@ COLLECTION_NAME= "pdf_chunks"
 EMBED_DIR      = Path(__file__).parent / "extracted_texts"
 META_JSON_PATH = EMBED_DIR / "_extraction_meta.json"
 MAX_TOKENS     = 512
+MODEL_DIR      = Path(__file__).parent / "embedding_Qwen4b"
+
+OVERLAP = 64 # 텍스트 청크 분할할
 # ──────────────────────────
 
 # 텍스트 청크 분할 함수
 
-def chunk_text(text: str, max_tokens: int = MAX_TOKENS, overlap: int = 64) -> list[str]:
-    words = text.split()
-    chunks = []
-    start = 0
-    while start < len(words):
-        end = min(start + max_tokens, len(words))
-        chunks.append(" ".join(words[start:end]))
-        start += max_tokens - overlap
-    return chunks
+
 
 # 검색 함수
 def search(query: str, top_k: int = 5, user_level: int = 1):
@@ -49,9 +44,62 @@ def search(query: str, top_k: int = 5, user_level: int = 1):
     collection.load()
 
     # 3) BGE-M3 임베딩
-    embed_model = BGEM3FlagModel('BAAI/bge-m3', use_fp16=True)
-    out = embed_model.encode([query], max_length=MAX_TOKENS)
-    q_emb = out['dense_vecs'][0].astype('float32')
+    # embed_model = BGEM3FlagModel('BAAI/bge-m3', use_fp16=True)
+    # out = embed_model.encode([query], max_length=MAX_TOKENS)
+    # q_emb = out['dense_vecs'][0].astype('float32')
+    # 3) HuggingFace AutoModel 로 쿼리 임베딩 (Ingest 쪽과 똑같은 파이프라인)
+    from transformers import AutoTokenizer, AutoModel
+    import torch, torch.nn.functional as F
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(MODEL_DIR),
+        trust_remote_code=True,
+        local_files_only=True
+    )
+
+
+    def chunk_text(text: str, max_tokens: int = MAX_TOKENS, overlap: int = OVERLAP) -> list[str]:
+        ids       = tokenizer.encode(text, add_special_tokens=False, return_tensors="pt")[0]
+        total_len = ids.size(0)
+        chunks    = []
+        start     = 0
+        while start < total_len:
+            end    = min(start + max_tokens, total_len)
+            sub_ids= ids[start:end]
+            chunk  = tokenizer.decode(sub_ids, skip_special_tokens=True)
+            chunks.append(chunk)
+            start += max_tokens - overlap
+        return chunks
+
+    model = AutoModel.from_pretrained(
+        str(MODEL_DIR),
+        trust_remote_code=True,
+        local_files_only=True,
+        torch_dtype=torch.float16
+    ).to(device).eval()
+
+    # mean-pooling 정의 (Ingest 쪽과 동일!)
+    def mean_pooling(outputs, mask):
+        token_emb = outputs.last_hidden_state
+        mask_exp   = mask.unsqueeze(-1).expand(token_emb.size()).float()
+        summed     = torch.sum(token_emb * mask_exp, dim=1)
+        counts     = torch.clamp(mask_exp.sum(dim=1), min=1e-9)
+        return summed / counts
+
+    # Tokenize & Encode
+    inputs = tokenizer(
+        query,
+        truncation=True,
+        padding="longest",
+        max_length=MAX_TOKENS,
+        return_tensors="pt"
+    ).to(device)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    q_emb = mean_pooling(outputs, inputs["attention_mask"])
+    q_emb = F.normalize(q_emb, p=2, dim=1).cpu().numpy()[0].astype("float32")
+
 
     # 4) Milvus 검색: security_level 필터 사용
     expr = f"security_level <= {user_level}"
@@ -84,7 +132,7 @@ def search(query: str, top_k: int = 5, user_level: int = 1):
 # LLM 프롬프트 생성 함수
 def build_prompt(query: str, hits: list[dict]) -> str:
     context = "\n---\n".join([h['snippet'] for h in hits])
-    return f"사용자 질의: {query}\n\n관련 문서 스니펫:\n{context}\n\n위 내용을 요약하여 응답해 주세요."
+    return f"사용자 질의: {query}\n\n관련 문서 스니펫:\n{context}\n\n위 내용을 참고하여 응답해 주세요."
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
