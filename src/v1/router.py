@@ -1,7 +1,8 @@
 from fastapi import APIRouter, status, Request
 from .main import (
     PDFExtractRequest, RAGSearchRequest,
-    extract_pdfs, ingest_embeddings, search_documents
+    extract_pdfs, ingest_embeddings, search_documents,
+    delete_db
 )
 
 router_v1 = APIRouter(
@@ -38,4 +39,12 @@ async def rag_ingest_endpoint(request: Request):
 @router_v1.post("/rag/search", summary="사용자 질의를 받아 벡터 검색 및 스니펫 반환")
 async def rag_search_endpoint(req: RAGSearchRequest, request: Request):
     print(f"Search Request from {request.client.host}: '{req.query}' (level={req.user_level})")
-    return await search_documents(req) 
+    return await search_documents(req)
+
+# -----------------------------
+# RAG: DB 전체 삭제
+# -----------------------------
+@router_v1.post("/rag/delete-db", summary="Milvus의 모든 컬렉션 삭제")
+async def rag_delete_db_endpoint(request: Request):
+    print(f"Delete DB Request from {request.client.host}")
+    return await delete_db() 

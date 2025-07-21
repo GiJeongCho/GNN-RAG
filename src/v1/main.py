@@ -249,3 +249,18 @@ async def search_documents(req: RAGSearchRequest):
 
     elapsed = round(time.perf_counter() - start_time, 4)
     return {"elapsed_sec": elapsed, "hits": hits, "prompt": prompt}
+
+# ----------------------------
+# 4) DB( Milvus 컬렉션 ) 삭제
+# ----------------------------
+async def delete_db():
+    """Milvus 인스턴스에 존재하는 모든 컬렉션을 제거"""
+    from pymilvus import connections, utility
+
+    MILVUS_HOST, MILVUS_PORT = "localhost", "19530"
+    connections.connect(alias="default", host=MILVUS_HOST, port=MILVUS_PORT)
+
+    col_names = utility.list_collections()
+    for col in col_names:
+        utility.drop_collection(col)
+    return {"message": "삭제 완료", "dropped_collections": col_names}

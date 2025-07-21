@@ -91,6 +91,30 @@ if st.button("🔍 검색 실행", key="search"):
         elif resp is not None:
             st.error(resp.text)
 
+st.divider()
+
+# ==================================
+# 4) DB 삭제
+# ==================================
+st.subheader("🗑️ Milvus DB 삭제")
+# 두 단계 확인 로직
+if st.button("⚠️ 전체 컬렉션 삭제", key="delete_db"):
+    st.session_state["want_delete"] = True
+
+if st.session_state.get("want_delete"):
+    st.warning("정말 모든 컬렉션을 삭제하시겠습니까?")
+    col_del1, col_del2 = st.columns(2)
+    with col_del1:
+        if st.button("✅ 네, 삭제", key="confirm_delete_db"):
+            with st.spinner("컬렉션 삭제 중..."):
+                resp = post("/v1/rag/delete-db")
+            if resp is not None:
+                st.json(resp.json() if resp.ok else resp.text)
+            st.session_state.pop("want_delete", None)
+    with col_del2:
+        if st.button("❌ 취소", key="cancel_delete_db"):
+            st.session_state.pop("want_delete", None)
+
 
 
 
