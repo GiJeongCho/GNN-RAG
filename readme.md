@@ -18,7 +18,9 @@ local_data/securityLevel3/임원및직원퇴직금규정_20231204.pdf
 
 ex )local_data/securityLevel3/임원및직원퇴직금규정_20231204.pdf
 
+
 ##### 사용법 #####
+
 
 -- fast api -- (docker -compose 로 변경사항 작업하는것 대신 이렇게)
 cd /home/조기정/project/RAG_LLM/
@@ -38,6 +40,16 @@ git add .
 git commit -m "✅better than yesterday" 
 git push --force origin master
 git push --force origin qwen
+
+#### 참고
+* 보안레벨은 1 보다 3이 높다
+
+- 데이터 추가 시 -
+local_data 폴더 → extract_pdfs 로 텍스트(.txt) & 메타(JSON) 생성 → v1/resources/extracted_texts/ 저장
+Milvus 벡터 DB는 ingest_* 단계에서 .txt 를 읽어 임베딩 후 저장 (텍스트 파일은 DB에 저장되지 않음)
+
+단일 pdf 인젝션 시, 텍스트 파일로 남기지 않고 바로 백터 DB로 저장.
+**@ 나중에 텍스트 파일로 남기는 부분은 다 삭제하기.(pdf 파일 텍스트 추출 성능 검증용임)
 
 ####### test 경로 #######
 

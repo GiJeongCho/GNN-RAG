@@ -210,10 +210,11 @@ async def ingest_embeddings():
                 version = _ver_num
                 meta_entry["version"] = version
 
-        # 이전 버전 문서 제거
-        del_expr = f"doc_id == '{doc_id}' && version < {version}"
+        # 동일 버전 중복 및 이전 버전 제거
+        del_expr = f"doc_id == '{doc_id}' && version <= {version}"
         try:
-            collection.delete(del_expr)
+            result = collection.delete(del_expr)
+            print(f"[INFO] 이전 버전 문서 삭제: {del_expr} -> {result}")
         except Exception:
             pass
 
@@ -275,7 +276,13 @@ async def ingest_single_pdf(req: SinglePDFIngestRequest):
                 lvl_folder = next(p for p in pdf_abs.parents if p.name.startswith("securityLevel"))
                 sec_level_val = int(lvl_folder.name.replace("securityLevel", ""))
             except StopIteration:
+                # 폴더명 규칙 없으면 이전 버전에서 상속하거나 1
                 sec_level_val = 1
+                # 이전 버전 보유 시 상속
+                for old_key, old_meta in extraction_meta.items():
+                    if old_meta.get("doc_id") == doc_id_part:
+                        sec_level_val = old_meta.get("security_level", 1)
+                        break
 
             # 읽기
             doc = fitz.open(pdf_abs)
@@ -369,10 +376,12 @@ async def ingest_single_pdf(req: SinglePDFIngestRequest):
     collection.load()
 
     # ---------- 기존 버전 삭제 ----------
-    del_expr = f"doc_id == '{doc_id}' && version < {version}"
+    del_expr = f"doc_id == '{doc_id}' && version <= {version}"
     try:
-        collection.delete(del_expr)
-    except Exception:
+        result = collection.delete(del_expr)
+        print(f"[INFO] 이전 버전 문서 삭제: {del_expr} -> {result}")
+    except Exception as e:
+        print(f"[WARN] 이전 버전 삭제 실패: {del_expr} -> {e}")
         pass
 
     # ---------- 청크 & 삽입 ----------
@@ -404,6 +413,7 @@ async def ingest_single_pdf(req: SinglePDFIngestRequest):
     except Exception:
         pass
 
+    print(f"[INFO] 단일 PDF 인제스트 성공: {meta_key} (doc_id={doc_id}, version={version}, chunks={len(chunks)})")
     return {"message": "단일 PDF 인제스트 완료", "doc_id": doc_id, "version": version, "chunks": len(chunks)}
 
 # ----------------------------
