@@ -3,12 +3,21 @@
 -- fast api -- (docker -compose 로 변경사항 작업하는것 대신 이렇게)
 cd /home/조기정/project/RAG_LLM/
 conda activate Qwen2.5
-uvicorn src.v1.api:app --reload
+uvicorn src.v1.api:app --reload | http://127.0.0.1:8000/v1/RGA_/docs 
 
 해두고 작업 가능
 
+-- streamlit -- (사용자 간편 테스트 )
+cd /home/조기정/project/RAG_LLM/
+uvicorn src.v1.api:app --reload
+conda activate Qwen2.5
+streamlit run app.py
 
-
+-- git 작업 갱신 --
+git add .
+git commit -m "✅better than yesterday" 
+git push --force origin master
+git push --force origin qwen
 
 ####### test 경로 #######
 

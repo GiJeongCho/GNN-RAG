@@ -17,7 +17,7 @@ resource_dir = os.getenv('RESOURCE_DIR', 'src/v1/resources')
 # 리소스 디렉터리 내 경로 정의
 EXTRACTED_TEXT_DIR = Path(resource_dir) / "extracted_texts"
 META_JSON_PATH = EXTRACTED_TEXT_DIR / "_extraction_meta.json"
-MODEL_PATH = Path(resource_dir) / "embedding_bge_m3"
+MODEL_PATH = Path(resource_dir) / "model" / "embedding_bge_m3"
 
 # ----------------------------
 # 요청 모델
