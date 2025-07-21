@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from v1.router import router_v1
+from .router import router_v1
 
 app = FastAPI(
     docs_url="/v1/RGA_/docs",

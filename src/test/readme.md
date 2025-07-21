@@ -1,17 +1,3 @@
-##### 사용법 #####
-
--- fast api -- (docker -compose 로 변경사항 작업하는것 대신 이렇게)
-cd /home/조기정/project/RAG_LLM/
-conda activate Qwen2.5
-uvicorn src.v1.api:app --reload
-
-해두고 작업 가능
-
-
-
-
-####### test 경로 #######
-
 cd /home/조기정/project/RAG_LLM/src/test
 conda activate Qwen2.5
 

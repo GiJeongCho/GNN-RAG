@@ -1,10 +1,18 @@
-
+from pathlib import Path
+import time
+import os
+from pydantic import BaseModel
+from typing import List
 
 # === RAG 기능: PDF 추출 · 임베딩 · 검색 ===
 from pathlib import Path
 import time
+import os
 from pydantic import BaseModel
 from typing import List
+
+# 리소스 디렉터리(환경변수로 재정의 가능)
+resource_dir = os.getenv('RESOURCE_DIR', 'src/v1/resources')
 
 # 리소스 디렉터리 내 경로 정의
 EXTRACTED_TEXT_DIR = Path(resource_dir) / "extracted_texts"
