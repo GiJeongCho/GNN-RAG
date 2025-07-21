@@ -17,7 +17,9 @@ resource_dir = os.getenv('RESOURCE_DIR', 'src/v1/resources')
 # 리소스 디렉터리 내 경로 정의
 EXTRACTED_TEXT_DIR = Path(resource_dir) / "extracted_texts"
 META_JSON_PATH = EXTRACTED_TEXT_DIR / "_extraction_meta.json"
-MODEL_PATH = Path(resource_dir) / "model" / "embedding_bge_m3"
+# 임베딩 모델 디렉터리(환경변수 EMBEDDING_MODEL_DIR 로 재정의 가능)
+MODEL_DIR_NAME = os.getenv("EMBEDDING_MODEL_DIR", "embedding_Qwen4b")  # 기본값은 Qwen 모델
+MODEL_PATH = Path(resource_dir) / "model" / MODEL_DIR_NAME
 
 # ----------------------------
 # 요청 모델
@@ -224,7 +226,8 @@ async def ingest_embeddings():
             inputs = tokenizer(chunk, truncation=True, padding="longest", max_length=MAX_TOKENS, return_tensors="pt").to(device)
             with torch.no_grad():
                 outs = model(**inputs)
-            vec = _mean_pooling(outs, inputs["attention_mask"]).cpu().numpy()[0].astype("float32")
+            vec = _mean_pooling(outs, inputs["attention_mask"])
+            vec = F.normalize(vec, p=2, dim=1).cpu().numpy()[0].astype("float32")
             collection.insert([[pk_counter], [vec.tolist()], [str(rel_txt)], [idx], [sec_level], [doc_id], [version]])
             pk_counter += 1
 
@@ -404,7 +407,8 @@ async def ingest_single_pdf(req: SinglePDFIngestRequest):
         inputs = tokenizer(chunk, truncation=True, padding="longest", max_length=MAX_TOKENS, return_tensors="pt").to(device)
         with torch.no_grad():
             outs = model(**inputs)
-        vec = _mean_pooling(outs, inputs["attention_mask"]).cpu().numpy()[0].astype("float32")
+        vec = _mean_pooling(outs, inputs["attention_mask"])
+        vec = F.normalize(vec, p=2, dim=1).cpu().numpy()[0].astype("float32")
         collection.insert([[pk_counter], [vec.tolist()], [str(Path(meta_key).with_suffix('.txt'))], [idx], [sec_level], [doc_id], [version]])
         pk_counter += 1
 
@@ -448,7 +452,8 @@ async def search_documents(req: RAGSearchRequest):
     inputs = tokenizer(req.query, truncation=True, padding="longest", max_length=MAX_TOKENS, return_tensors="pt").to(device)
     with torch.no_grad():
         outputs = model(**inputs)
-    q_emb = _mean_pooling(outputs, inputs["attention_mask"]).cpu().numpy()[0].astype("float32")
+    q_emb = _mean_pooling(outputs, inputs["attention_mask"])
+    q_emb = F.normalize(q_emb, p=2, dim=1).cpu().numpy()[0].astype("float32")
 
     # 검색 (동일 doc_id 중 최신 버전만 유지)
     expr = f"security_level <= {req.user_level}"
