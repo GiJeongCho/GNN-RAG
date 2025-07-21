@@ -1,3 +1,23 @@
+row data 사용 규칙
+
+현재 : pdf 파일만 적용 가능
+1. local_data와 같이 하위 폴더에 securityLevel"n"을 나눠서 파일로 정리한다.
+2. 새 PDF를 local_data/securityLevelX/ 아래에 넣는다.
+    - 업데이트 된 파일 몇개만 올릴 경우에 _ 이후에 날짜로 최신 데이터 갱신(새로운 파일 업데이트 시 해당 파일만 업데이트 하게 구성 했기 떄문)
+
+ex )
+local_data/securityLevel1
+local_data/securityLevel2
+
+local_data/securityLevel2/연구용역_관리내규_20240625.pdf
+local_data/securityLevel2/청렴윤리경영_운영규정_20230731.pdf
+
+local_data/securityLevel3
+local_data/securityLevel3/81._부정청탁및금품등수수의신고사무처리에관한내규_20191128.pdf
+local_data/securityLevel3/임원및직원퇴직금규정_20231204.pdf
+
+ex )local_data/securityLevel3/임원및직원퇴직금규정_20231204.pdf
+
 ##### 사용법 #####
 
 -- fast api -- (docker -compose 로 변경사항 작업하는것 대신 이렇게)

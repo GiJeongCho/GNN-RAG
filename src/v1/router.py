@@ -2,7 +2,7 @@ from fastapi import APIRouter, status, Request
 from .main import (
     PDFExtractRequest, RAGSearchRequest,
     extract_pdfs, ingest_embeddings, search_documents,
-    delete_db
+    ingest_single_pdf, delete_db, SinglePDFIngestRequest
 )
 
 router_v1 = APIRouter(
@@ -32,6 +32,14 @@ async def rag_extract_endpoint(req: PDFExtractRequest, request: Request):
 async def rag_ingest_endpoint(request: Request):
     print(f"Ingest Request from {request.client.host}")
     return await ingest_embeddings()
+
+# -----------------------------
+# RAG: 단일 PDF 인제스트
+# -----------------------------
+@router_v1.post("/rag/ingest-file", summary="단일 PDF만 벡터 DB에 반영")
+async def rag_ingest_file_endpoint(req: SinglePDFIngestRequest, request: Request):
+    print(f"Single Ingest from {request.client.host}: {req.pdf_path}")
+    return await ingest_single_pdf(req)
 
 # -----------------------------
 # RAG: 검색

@@ -50,11 +50,23 @@ st.divider()
 # 2) Milvus 임베딩 Ingest
 # ==================================
 st.subheader("② 임베딩 & Milvus Ingest")
-if st.button("🔄 임베딩 / Ingest 실행", key="ingest"):
-    with st.spinner("임베딩·Ingest 진행 중..."):
-        resp = post("/v1/rag/ingest")
-    if resp is not None:
-        st.json(resp.json() if resp.ok else resp.text)
+col_ing1, col_ing2 = st.columns(2)
+with col_ing1:
+    if st.button("🔄 전체 Ingest", key="ingest_all"):
+        with st.spinner("임베딩·Ingest 진행 중..."):
+            resp = post("/v1/rag/ingest")
+        if resp is not None:
+            st.json(resp.json() if resp.ok else resp.text)
+with col_ing2:
+    single_path = st.text_input("단일 PDF 절대경로", key="single_path")
+    if st.button("➕ 단일 파일 추가(파일 업데이트 시 이전 파일 이름과 _ 이후에 날짜로 최신 데이터 갱신)", key="ingest_single"):
+        if not single_path:
+            st.warning("PDF 경로를 입력하세요.")
+        else:
+            with st.spinner("단일 PDF 인제스트 중..."):
+                resp = post("/v1/rag/ingest-file", {"pdf_path": single_path})
+            if resp is not None:
+                st.json(resp.json() if resp.ok else resp.text)
 
 st.divider()
 

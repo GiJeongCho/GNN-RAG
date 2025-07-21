@@ -46,7 +46,7 @@ def chunk_text(text: str, max_tokens: int = MAX_TOKENS, overlap: int = 0) -> lis
     return chunks
 
 # 검색 함수
-def search(query: str, top_k: int, user_level: int):
+def search(query: str, top_k: int, max_level: int):
     # 1) 메타 로드
     extraction_meta = json.loads(META_JSON_PATH.read_text(encoding='utf-8'))
 
@@ -76,7 +76,7 @@ def search(query: str, top_k: int, user_level: int):
     q_vec = F.normalize(q_emb, p=2, dim=1).cpu().numpy().astype('float32')
 
     # 5) 필터 표현식 지정
-    expr = f"security_level <= {user_level}"
+    expr = f"security_level <= {max_level}"
 
     # 6) Milvus 검색
     results = collection.search(
@@ -117,15 +117,15 @@ def search(query: str, top_k: int, user_level: int):
 
 def build_prompt(query: str, hits: list[dict]) -> str:
     context = "\n---\n".join([h['snippet'] for h in hits])
-    return f"사용자 질의: {query}\n\n관련 문서 스니펫:\n{context}\n\n위 내용을 참고하여 응답해 주세요."
+    return f"사용자 질의: {query}\n\n관련 문서 스니펫:\n{context}\n\n위 내용을 요약하여 응답해 주세요."
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('query', help='검색할 문장')
     parser.add_argument('--top_k', type=int, default=5, help='상위 k개 결과')
-    parser.add_argument('--user_level', type=int, required=True, help='접근 가능한 최대 보안 레벨')
+    parser.add_argument('--max_level', type=int, required=True, help='접근 가능한 최대 보안 레벨')
     args = parser.parse_args()
-    hits = search(args.query, args.top_k, args.user_level)
+    hits = search(args.query, args.top_k, args.max_level)
     if not hits:
         print("검색 결과가 없습니다.")
         exit(0)
