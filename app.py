@@ -15,6 +15,7 @@ with st.sidebar:
     st.header("⚙️ API 설정")
     api_base = st.text_input("FastAPI Base URL", DEFAULT_API_BASE)
     st.markdown("예: `http://127.0.0.1:8000`")
+    model_choice = st.selectbox("임베딩 모델", options=["qwen", "bge_m3"], index=0)
 
 # 헬퍼 함수
 def post(endpoint: str, payload: dict | None = None):
@@ -54,7 +55,7 @@ col_ing1, col_ing2 = st.columns(2)
 with col_ing1:
     if st.button("🔄 전체 Ingest", key="ingest_all"):
         with st.spinner("임베딩·Ingest 진행 중..."):
-            resp = post("/v1/rag/ingest")
+            resp = post(f"/v1/rag/ingest?model={model_choice}")
         if resp is not None:
             st.json(resp.json() if resp.ok else resp.text)
 with col_ing2:
@@ -64,7 +65,7 @@ with col_ing2:
             st.warning("PDF 경로를 입력하세요.")
         else:
             with st.spinner("단일 PDF 인제스트 중..."):
-                resp = post("/v1/rag/ingest-file", {"pdf_path": single_path})
+                resp = post(f"/v1/rag/ingest-file?model={model_choice}", {"pdf_path": single_path})
             if resp is not None:
                 st.json(resp.json() if resp.ok else resp.text)
 
@@ -81,23 +82,31 @@ with col1:
 with col2:
     user_level = st.number_input("사용자 보안 레벨", min_value=1, max_value=10, value=1, step=1)
 
+# 특정 문서 필터
+with st.expander("🔍 특정 문서만 검색", expanded=False):
+    doc_names_raw = st.text_area("문서 이름 목록 (콤마/줄바꿈 구분)", placeholder="example.pdf, sample_20240625.pdf")
+    doc_names = [d.strip() for d in doc_names_raw.replace("\n", ",").split(",") if d.strip()]
+
 if st.button("🔍 검색 실행", key="search"):
     if not query.strip():
         st.warning("질문을 입력하세요.")
     else:
-        payload = {"query": query, "top_k": top_k, "user_level": user_level}
+        base_payload = {"query": query, "top_k": top_k, "user_level": user_level, "model_name": model_choice}
+        if doc_names:
+            base_payload["doc_names"] = doc_names
+            endpoint = "/v1/rag/search-docs"
+        else:
+            endpoint = "/v1/rag/search"
         with st.spinner("검색 중..."):
-            resp = post("/v1/rag/search", payload)
+            resp = post(endpoint, base_payload)
         if resp is not None and resp.ok:
             data = resp.json()
             st.success(f"검색 완료 – 소요 시간: {data.get('elapsed_sec', '?')}s")
 
-            # 히트 결과 표시
             for i, h in enumerate(data.get("hits", []), 1):
                 with st.expander(f"{i}. {h['path']} | score={h['score']:.4f} | level={h['security_level']}"):
                     st.write(h["snippet"])
 
-            # 프롬프트
             st.subheader("LLM 프롬프트")
             st.code(data.get("prompt", ""), language="markdown")
         elif resp is not None:
@@ -106,7 +115,29 @@ if st.button("🔍 검색 실행", key="search"):
 st.divider()
 
 # ==================================
-# 4) DB 삭제
+# 4) 선택 문서 삭제
+# ==================================
+st.subheader("④ 선택 문서 삭제")
+with st.expander("문서 삭제", expanded=False):
+    del_doc_raw = st.text_area("삭제할 문서 이름 목록 (콤마/줄바꿈)", key="del_docs")
+    del_only_single = st.checkbox("단일 업로드(local_data) 경로만", value=True)
+    del_btn = st.button("🗑️ 문서 삭제", key="delete_selected")
+
+    if del_btn:
+        del_docs = [d.strip() for d in del_doc_raw.replace("\n", ",").split(",") if d.strip()]
+        if not del_docs:
+            st.warning("삭제할 문서명을 입력하세요.")
+        else:
+            payload = {"doc_names": del_docs, "only_single": del_only_single}
+            with st.spinner("삭제 중..."):
+                resp = post("/v1/rag/delete-docs", payload)
+            if resp is not None:
+                st.json(resp.json() if resp.ok else resp.text)
+
+st.divider()
+
+# ==================================
+# 5) DB 삭제
 # ==================================
 st.subheader("🗑️ Milvus DB 삭제")
 # 두 단계 확인 로직

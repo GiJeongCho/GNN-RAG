@@ -3,6 +3,7 @@ import time
 import os
 from pydantic import BaseModel
 from typing import List
+from src.v1.utils.file_parser import parse_file, SUPPORTED_EXTENSIONS
 
 # === RAG 기능: PDF 추출 · 임베딩 · 검색 ===
 from pathlib import Path
@@ -18,8 +19,22 @@ resource_dir = os.getenv('RESOURCE_DIR', 'src/v1/resources')
 EXTRACTED_TEXT_DIR = Path(resource_dir) / "extracted_texts"
 META_JSON_PATH = EXTRACTED_TEXT_DIR / "_extraction_meta.json"
 # 임베딩 모델 디렉터리(환경변수 EMBEDDING_MODEL_DIR 로 재정의 가능)
-MODEL_DIR_NAME = os.getenv("EMBEDDING_MODEL_DIR", "embedding_Qwen4b")  # 기본값은 Qwen 모델
-MODEL_PATH = Path(resource_dir) / "model" / MODEL_DIR_NAME
+# ── Embedding model mapping & helpers ────────────────────────────
+# 사용 가능한 모델 → 실제 디렉터리명 매핑
+MODEL_ALIAS_DIRS: dict[str, str] = {
+    "qwen": "embedding_Qwen4b",
+    "bge_m3": "embedding_bge_m3",
+}
+
+# 기본(서버 환경변수로 재정의 가능)
+DEFAULT_MODEL_NAME = os.getenv("DEFAULT_MODEL_NAME", "qwen")
+
+def _resolve_model_path(model_name: str | None) -> Path:
+    """Given a user-supplied *model_name* (alias or dir), resolve to actual Path."""
+    if not model_name:
+        model_name = DEFAULT_MODEL_NAME
+    dir_name = MODEL_ALIAS_DIRS.get(model_name, model_name)
+    return Path(resource_dir) / "model" / dir_name
 
 # ----------------------------
 # 요청 모델
@@ -31,6 +46,13 @@ class RAGSearchRequest(BaseModel):
     query: str
     top_k: int = 5
     user_level: int = 1
+    model_name: str | None = None  # "qwen" or "bge_m3" (None -> default)
+    doc_names: List[str] | None = None  # 특정 문서명(확장자 포함/미포함)만 검색
+
+# 선택 삭제 요청 모델
+class DeleteDocsRequest(BaseModel):
+    doc_names: List[str]
+    only_single: bool = True  # True → ingest_single_pdf 로 올라온(local_data 경로) 것만 삭제
 
 # 단일 PDF만 임베딩 요청
 class SinglePDFIngestRequest(BaseModel):
@@ -59,6 +81,100 @@ def _parse_doc_version(stem: str):
         if cand.isdigit() and len(cand) in (4, 8):
             return base, int(cand)
     return stem, 0
+
+# ----------------------------
+# Generic extraction for many document formats
+# ----------------------------
+
+class DocumentExtractRequest(BaseModel):
+    dir_path: str  # root directory containing documents of various formats
+
+
+async def extract_documents(req: DocumentExtractRequest):
+    """Walk *dir_path* and extract supported documents into plain-text (.txt) files.
+
+    The extracted text files live under EXTRACTED_TEXT_DIR mirroring the input
+    hierarchy. Metadata is stored/updated in _extraction_meta.json. All logic
+    previously limited to PDF now works for a wider set of formats defined in
+    utils.file_parser.SUPPORTED_EXTENSIONS.
+    """
+    import json
+    from tqdm import tqdm
+
+    root_dir = Path(req.dir_path)
+    if not root_dir.exists():
+        return {"error": f"경로가 존재하지 않습니다: {req.dir_path}"}
+
+    EXTRACTED_TEXT_DIR.mkdir(parents=True, exist_ok=True)
+
+    done_files = {}
+    if META_JSON_PATH.exists():
+        done_files = json.loads(META_JSON_PATH.read_text(encoding="utf-8"))
+
+    new_meta = {}
+    failed_files = []
+
+    # Gather candidate files
+    file_paths = [p for p in root_dir.rglob("*") if p.suffix.lower() in SUPPORTED_EXTENSIONS]
+    if not file_paths:
+        return {"message": "처리할 지원되는 파일이 없습니다."}
+
+    for fpath in tqdm(file_paths, desc="문서 전처리"):
+        rel_path = fpath.relative_to(root_dir)
+        txt_path = EXTRACTED_TEXT_DIR / rel_path.with_suffix(".txt")
+        key = str(rel_path)
+
+        # Skip already processed
+        if key in done_files and txt_path.exists():
+            new_meta[key] = done_files[key]
+            continue
+
+        try:
+            text_content = parse_file(fpath)
+            if not text_content:
+                raise RuntimeError("지원되지 않는 형식 또는 파싱 실패")
+
+            txt_path.parent.mkdir(parents=True, exist_ok=True)
+            txt_path.write_text(text_content, encoding="utf-8")
+
+            # 보안레벨 추출 (securityLevelN 폴더명 가정, 없으면 1)
+            level_folder = rel_path.parts[0] if len(rel_path.parts) else "securityLevel1"
+            try:
+                security_level = int(level_folder.replace("securityLevel", ""))
+            except ValueError:
+                security_level = 1
+
+            # 문서 ID / 버전 추출
+            doc_id_part, version_num = _parse_doc_version(rel_path.stem)
+
+            lines = text_content.splitlines()
+            info = {
+                "chars": len(text_content),
+                "lines": len(lines),
+                "preview": text_content[:200].replace("\n", " ") + "…",
+                "security_level": security_level,
+                "doc_id": doc_id_part,
+                "version": version_num,
+            }
+
+            new_meta[key] = info
+        except Exception as e:
+            new_meta[key] = {"error": str(e)}
+            failed_files.append({"path": str(fpath), "error": str(e)})
+
+    META_JSON_PATH.write_text(
+        json.dumps(new_meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    return {
+        "message": "문서 추출 완료",
+        "file_count": len(file_paths),
+        "failed": failed_files,
+        "meta_path": str(META_JSON_PATH),
+    }
+
+# --- Backward compatibility alias ---
+extract_pdfs = extract_documents
 
 # ----------------------------
 # 1) PDF → 텍스트 추출
@@ -130,7 +246,7 @@ async def extract_pdfs(req: PDFExtractRequest):
 # ----------------------------
 # 2) 텍스트 임베딩 & Milvus 인제스트
 # ----------------------------
-async def ingest_embeddings():
+async def ingest_embeddings(model_name: str | None = None):
     from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
     from transformers import AutoTokenizer, AutoModel
     import json, numpy as np
@@ -148,10 +264,14 @@ async def ingest_embeddings():
 
     collection_exists = utility.has_collection(COLLECTION_NAME)
 
-    # 모델 준비
+    # ── 모델 준비 ────────────────────────────────────────────────
+    model_path = _resolve_model_path(model_name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained(str(MODEL_PATH), trust_remote_code=True, local_files_only=True)
-    model = AutoModel.from_pretrained(str(MODEL_PATH), trust_remote_code=True, local_files_only=True, torch_dtype=torch.float16).to(device).eval()
+    tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=True, local_files_only=True)
+    model = AutoModel.from_pretrained(str(model_path), trust_remote_code=True, local_files_only=True, torch_dtype=torch.float16).to(device).eval()
+
+    # Qwen 모델일 때만 임베딩 벡터 L2 정규화
+    normalize_flag = (model_name or DEFAULT_MODEL_NAME).lower() == "qwen"
 
     # 임베딩 차원 계산
     dummy_inp = tokenizer("test", return_tensors="pt").to(device)
@@ -227,8 +347,10 @@ async def ingest_embeddings():
             with torch.no_grad():
                 outs = model(**inputs)
             vec = _mean_pooling(outs, inputs["attention_mask"])
-            vec = F.normalize(vec, p=2, dim=1).cpu().numpy()[0].astype("float32")
-            collection.insert([[pk_counter], [vec.tolist()], [str(rel_txt)], [idx], [sec_level], [doc_id], [version]])
+            if normalize_flag:
+                vec = F.normalize(vec, p=2, dim=1)
+            vec = vec.cpu().numpy()[0].astype("float32")
+            collection.insert([[pk_counter], [vec.tolist()], [rel_pdf], [idx], [sec_level], [doc_id], [version]])
             pk_counter += 1
 
     # 컴팩트로 디스크 공간 최적화
@@ -240,12 +362,12 @@ async def ingest_embeddings():
     # 메타 JSON이 수정되었을 수 있으므로 저장
     META_JSON_PATH.write_text(json.dumps(extraction_meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    return {"message": "Ingest 완료", "inserted_chunks": pk_counter}
+    return {"message": "Ingest 완료", "inserted_chunks": pk_counter, "model": model_name or DEFAULT_MODEL_NAME}
 
 # ----------------------------
 # (NEW) 2-1) 단일 PDF 임베딩 & 인제스트
 # ----------------------------
-async def ingest_single_pdf(req: SinglePDFIngestRequest):
+async def ingest_single_pdf(req: SinglePDFIngestRequest, model_name: str | None = None):
     """이미 extract_pdfs 로 추출(텍스트, 메타json) 된 상태에서 특정 PDF 한 건만 벡터 DB에 반영한다."""
     from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
     from transformers import AutoTokenizer, AutoModel
@@ -347,9 +469,13 @@ async def ingest_single_pdf(req: SinglePDFIngestRequest):
     connections.connect(alias="default", host=MILVUS_HOST, port=MILVUS_PORT)
     collection_exists = utility.has_collection(COLLECTION_NAME)
 
+    model_path = _resolve_model_path(model_name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained(str(MODEL_PATH), trust_remote_code=True, local_files_only=True)
-    model = AutoModel.from_pretrained(str(MODEL_PATH), trust_remote_code=True, local_files_only=True, torch_dtype=torch.float16).to(device).eval()
+    tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=True, local_files_only=True)
+    model = AutoModel.from_pretrained(str(model_path), trust_remote_code=True, local_files_only=True, torch_dtype=torch.float16).to(device).eval()
+
+    # Qwen 모델일 때만 임베딩 벡터 L2 정규화
+    normalize_flag = (model_name or DEFAULT_MODEL_NAME).lower() == "qwen"
 
     # ---------- 스키마 (필요시 생성) ----------
     def ensure_collection():
@@ -408,8 +534,10 @@ async def ingest_single_pdf(req: SinglePDFIngestRequest):
         with torch.no_grad():
             outs = model(**inputs)
         vec = _mean_pooling(outs, inputs["attention_mask"])
-        vec = F.normalize(vec, p=2, dim=1).cpu().numpy()[0].astype("float32")
-        collection.insert([[pk_counter], [vec.tolist()], [str(Path(meta_key).with_suffix('.txt'))], [idx], [sec_level], [doc_id], [version]])
+        if normalize_flag:
+            vec = F.normalize(vec, p=2, dim=1)
+        vec = vec.cpu().numpy()[0].astype("float32")
+        collection.insert([[pk_counter], [vec.tolist()], [meta_key], [idx], [sec_level], [doc_id], [version]])
         pk_counter += 1
 
     try:
@@ -443,10 +571,10 @@ async def search_documents(req: RAGSearchRequest):
     collection = Collection(COLLECTION_NAME)
     collection.load()
 
-    # 모델 로드
+    model_path = _resolve_model_path(req.model_name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained(str(MODEL_PATH), trust_remote_code=True, local_files_only=True)
-    model = AutoModel.from_pretrained(str(MODEL_PATH), trust_remote_code=True, local_files_only=True, torch_dtype=torch.float16).to(device).eval()
+    tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=True, local_files_only=True)
+    model = AutoModel.from_pretrained(str(model_path), trust_remote_code=True, local_files_only=True, torch_dtype=torch.float16).to(device).eval()
 
     # 쿼리 임베딩
     inputs = tokenizer(req.query, truncation=True, padding="longest", max_length=MAX_TOKENS, return_tensors="pt").to(device)
@@ -457,6 +585,15 @@ async def search_documents(req: RAGSearchRequest):
 
     # 검색 (동일 doc_id 중 최신 버전만 유지)
     expr = f"security_level <= {req.user_level}"
+    if req.doc_names:
+        # doc_names -> doc_id 파싱(확장자 제거 & 버전 제거)
+        doc_ids = []
+        for n in req.doc_names:
+            stem = Path(n).stem
+            d_id, _ = _parse_doc_version(stem)
+            doc_ids.append(d_id)
+        quoted = ",".join([f'\"{d}\"' for d in doc_ids])
+        expr += f" && doc_id in [{quoted}]"
     results = collection.search(data=[q_emb.tolist()], anns_field="embedding", param={"metric_type": "IP", "params": {"ef": 100}}, limit=req.top_k, expr=expr, output_fields=["path", "chunk_idx", "security_level"])
 
     def chunk_text(text: str, max_tokens: int = MAX_TOKENS, overlap: int = OVERLAP):
@@ -471,10 +608,11 @@ async def search_documents(req: RAGSearchRequest):
 
     hits = []
     for hit in results[0]:
-        path = hit.entity.get("path")
+        path = hit.entity.get("path")  # original doc path (.pdf etc)
         cidx = hit.entity.get("chunk_idx")
         sec_level = hit.entity.get("security_level")
-        full_txt = (EXTRACTED_TEXT_DIR / path).read_text(encoding="utf-8")
+        txt_rel = Path(path).with_suffix(".txt")
+        full_txt = (EXTRACTED_TEXT_DIR / txt_rel).read_text(encoding="utf-8")
         snippet = chunk_text(full_txt)[cidx]
         hits.append({
             "score": hit.score,
@@ -489,6 +627,49 @@ async def search_documents(req: RAGSearchRequest):
 
     elapsed = round(time.perf_counter() - start_time, 4)
     return {"elapsed_sec": elapsed, "hits": hits, "prompt": prompt}
+
+# ----------------------------
+# 선택 문서 삭제
+# ----------------------------
+async def delete_selected_docs(req: DeleteDocsRequest):
+    from pymilvus import connections, Collection
+
+    MILVUS_HOST, MILVUS_PORT, COLLECTION_NAME = "localhost", "19530", "pdf_chunks"
+
+    connections.connect(alias="default", host=MILVUS_HOST, port=MILVUS_PORT)
+    collection = Collection(COLLECTION_NAME)
+
+    # doc_id 리스트 준비
+    doc_ids = []
+    for n in req.doc_names:
+        stem = Path(n).stem
+        d_id, _ = _parse_doc_version(stem)
+        doc_ids.append(d_id)
+
+    quoted = ",".join([f'\"{d}\"' for d in doc_ids])
+
+    expr = f"doc_id in [{quoted}]"
+    if req.only_single:
+        # ingest_single_pdf 는 path 가 local_data/ 또는 파일명 단독이므로 '/' 포함 안할 수도 있음
+        expr += " && path like 'local_data%'"
+
+    try:
+        res = collection.delete(expr)
+
+        # MutationResult는 FastAPI가 직렬화할 수 없는 객체이므로 요약 dict로 변환
+        res_serialized = {
+            "delete_count":  getattr(res, "delete_count", 0) or getattr(res, "succ_count", 0),
+            "success_count": getattr(res, "success_count", 0) or getattr(res, "succ_count", 0),
+            "err_count":     getattr(res, "err_count", 0),
+            "timestamp":     getattr(res, "timestamp", None),
+        }
+
+        # None 값 제거
+        res_serialized = {k: v for k, v in res_serialized.items() if v is not None}
+
+        return {"expr": expr, "mutation": res_serialized}
+    except Exception as e:
+        return {"error": str(e), "expr": expr}
 
 # ----------------------------
 # 4) DB( Milvus 컬렉션 ) 삭제
