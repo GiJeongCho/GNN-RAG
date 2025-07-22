@@ -120,7 +120,6 @@ st.divider()
 st.subheader("④ 선택 문서 삭제")
 with st.expander("문서 삭제", expanded=False):
     del_doc_raw = st.text_area("삭제할 문서 이름 목록 (콤마/줄바꿈)", key="del_docs")
-    del_only_single = st.checkbox("단일 업로드(local_data) 경로만", value=True)
     del_btn = st.button("🗑️ 문서 삭제", key="delete_selected")
 
     if del_btn:
@@ -128,7 +127,7 @@ with st.expander("문서 삭제", expanded=False):
         if not del_docs:
             st.warning("삭제할 문서명을 입력하세요.")
         else:
-            payload = {"doc_names": del_docs, "only_single": del_only_single}
+            payload = {"doc_names": del_docs}
             with st.spinner("삭제 중..."):
                 resp = post("/v1/rag/delete-docs", payload)
             if resp is not None:

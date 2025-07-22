@@ -52,7 +52,7 @@ class RAGSearchRequest(BaseModel):
 # 선택 삭제 요청 모델
 class DeleteDocsRequest(BaseModel):
     doc_names: List[str]
-    only_single: bool = True  # True → ingest_single_pdf 로 올라온(local_data 경로) 것만 삭제
+    only_single: bool | None = None  # 호환성 유지용, 로직에서 사용 안 함
 
 # 단일 PDF만 임베딩 요청
 class SinglePDFIngestRequest(BaseModel):
@@ -648,10 +648,7 @@ async def delete_selected_docs(req: DeleteDocsRequest):
 
     quoted = ",".join([f'\"{d}\"' for d in doc_ids])
 
-    expr = f"doc_id in [{quoted}]"
-    if req.only_single:
-        # ingest_single_pdf 는 path 가 local_data/ 또는 파일명 단독이므로 '/' 포함 안할 수도 있음
-        expr += " && path like 'local_data%'"
+    expr = f"doc_id in [{quoted}]"  # doc_id 매칭만 사용
 
     try:
         res = collection.delete(expr)
@@ -659,9 +656,7 @@ async def delete_selected_docs(req: DeleteDocsRequest):
         # MutationResult는 FastAPI가 직렬화할 수 없는 객체이므로 요약 dict로 변환
         res_serialized = {
             "delete_count":  getattr(res, "delete_count", 0) or getattr(res, "succ_count", 0),
-            "success_count": getattr(res, "success_count", 0) or getattr(res, "succ_count", 0),
             "err_count":     getattr(res, "err_count", 0),
-            "timestamp":     getattr(res, "timestamp", None),
         }
 
         # None 값 제거
