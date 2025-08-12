@@ -18,22 +18,41 @@ local_data/securityLevel3/임원및직원퇴직금규정_20231204.pdf
 
 ex )local_data/securityLevel3/임원및직원퇴직금규정_20231204.pdf
 
+## Podman 설치 및 실행 ##
+cat /etc/os-release | OS 확인
+sudo apt update
+sudo apt install -y podman uidmap slirp4netns fuse-overlayfs podman-docker
+grep $(whoami) /etc/subuid /etc/subgid || echo "관리자에게 uidmap 설정 요청"
+
 
 ##### 사용법 #####
 
 
+
+curl -sfL https://raw.githubusercontent.com/milvus-io/milvus/master/scripts/standalone_embed.sh -o standalone_embed.sh
+sudo dockerd
+### 밀버스 DB 설치 ###
+
+pip install -U pymilvus
+
+##### 사용법 #####
+pip install fastapi
+pip install streamlit
+python -m pip install "uvicorn[standard]" fastapi
+
 -- fast api -- (docker -compose 로 변경사항 작업하는것 대신 이렇게)
-cd /home/조기정/project/RAG_LLM/
-conda activate Qwen2.5
-uvicorn src.v1.api:app --reload | http://127.0.0.1:8000/v1/RGA_/docs 
+cd /home/work/CoreIQ/test_J/GNN-RAG
+conda activate vator_DB
+uvicorn src.v1.api:app --host 0.0.0.0 --reload --port 3002 | http://172.17.0.5/:3002/v1/RGA_/docs |
+http://0.0.0.0/:3002/v1/RGA_/docs 
 
 해두고 작업 가능
 
 -- streamlit -- (사용자 간편 테스트 )
-cd /home/조기정/project/RAG_LLM/
-uvicorn src.v1.api:app --reload
-conda activate Qwen2.5
-streamlit run app.py
+cd /home/work/CoreIQ/test_J/GNN-RAG
+conda activate vator_DB
+streamlit run app.py --server.address 0.0.0.0 --server.port 3001 | 
+http://172.17.0.5:3001
 
 -- git 작업 갱신 --
 git add .
@@ -55,7 +74,6 @@ Milvus 벡터 DB는 ingest_* 단계에서 .txt 를 읽어 임베딩 후 저장 (
 
 cd /home/조기정/project/RAG_LLM/src/test
 conda activate Qwen2.5
-
 
 pdf_text_extractor.py 를 실행시켜 pdf 파일의 텍스트를 긁어옵니다..
 milvus_ingest_chunked.py 를 실행시켜 하위 경로의 모든 pdf 파일을 백터 DB로 저장합니다

@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 # 기본 API URL (필요에 따라 수정 가능)
-DEFAULT_API_BASE = "http://127.0.0.1:8000"
+DEFAULT_API_BASE = "http://localhost:3002"
 
 st.set_page_config(page_title="RGA_LLM RAG 대시보드", layout="centered")
 
@@ -14,7 +14,7 @@ st.title("📄🔎 RGA_LLM – FastAPI 연동 테스트")
 with st.sidebar:
     st.header("⚙️ API 설정")
     api_base = st.text_input("FastAPI Base URL", DEFAULT_API_BASE)
-    st.markdown("예: `http://127.0.0.1:8000`")
+    st.markdown("예: `http://172.17.0.5:3002`")
 
 # 헬퍼 함수
 def post(endpoint: str, payload: dict | None = None):
@@ -126,7 +126,4 @@ if st.session_state.get("want_delete"):
     with col_del2:
         if st.button("❌ 취소", key="cancel_delete_db"):
             st.session_state.pop("want_delete", None)
-
-
-
-
+            
